@@ -17,6 +17,7 @@ import Queue
 
 final_domains = []
 ports = []
+mkpath="./reports/"
 
 class PortScan(threading.Thread):
     def __init__(self, queue):
@@ -36,7 +37,7 @@ class PortScan(threading.Thread):
 #调用masscan
 def portscan(scan_ip):
     temp_ports = [] #设定一个临时端口列表
-    os.system('masscan/bin/masscan ' + scan_ip + ' -p 1-65535 -oJ masscan.json --rate 2000')
+    os.system('masscan ' + scan_ip + ' -p 1-65535 -oJ masscan.json --rate 200000')
     #提取json文件中的端口
     with open('masscan.json', 'r') as f:
         for line in f:
@@ -52,7 +53,12 @@ def portscan(scan_ip):
 
 
 #获取网站的web应用程序名和网站标题信息
-def Title(scan_url_port,service_name):
+def Title(scan_ip, port,service_name):
+    if service_name == 'https' or service_name == 'https-alt':
+        scan_url_port = 'https://' + scan_ip + ':' + port
+    else:
+        scan_url_port = 'http://' + scan_ip + ':' + port
+
     try:
         r = requests.get(scan_url_port,timeout=3,verify=False)
         #获取网站的页面编码
@@ -60,12 +66,12 @@ def Title(scan_url_port,service_name):
         actual_encode = r_detectencode['encoding']
         response = re.findall(u'<title>(.*?)</title>',r.content,re.S)
         if response == []:
-            final_domains.append(scan_url_port + '\t' + service_name)
+            final_domains.append(scan_ip + ',' + port + ',' + service_name + ',' + scan_url_port)
         else:
             #将页面解码为utf-8，获取中文标题
             res = response[0].decode(actual_encode).decode('utf-8')
             banner = r.headers['server']
-            final_domains.append(scan_url_port + '\t' + banner + '\t' + res)     
+            final_domains.append(scan_ip + ',' + port + ',' + service_name + ',' + scan_url_port + ',' + banner + ',' + res)
     except Exception as e:
         print e
         pass
@@ -79,14 +85,15 @@ def Scan(scan_ip):
             service_name = ret['scan'][scan_ip]['tcp'][int(port)]['name']
             print '[*]主机 ' + scan_ip + ' 的 ' + str(port) + ' 端口服务为：' + service_name
             if 'http' in service_name  or service_name == 'sun-answerbook':
-                if service_name == 'https' or service_name == 'https-alt':
-                    scan_url_port = 'https://' + scan_ip + ':' + str(port)
-                    Title(scan_url_port,service_name)
-                else:
-                    scan_url_port = 'http://' + scan_ip + ':' + str(port)
-                    Title(scan_url_port,service_name)
+                # if service_name == 'https' or service_name == 'https-alt':
+                #     scan_url_port = 'https://' + scan_ip + ':' + str(port)
+                #     Title(scan_url_port,service_name)
+                # else:
+                #     scan_url_port = 'http://' + scan_ip + ':' + str(port)
+                #     Title(scan_url_port,service_name)
+                Title(scan_ip, str(port), service_name)
             else:
-                final_domains.append(scan_ip+':'+str(port)+'\t'+service_name)
+                final_domains.append(scan_ip+','+str(port)+','+service_name)
     except Exception as e:
        print e
        pass
@@ -115,13 +122,25 @@ def main():
 
 if __name__ =='__main__':
     start_time = datetime.datetime.now()
+
+    # 判断report目录是否存在，不存在则创建
+    isExists = os.path.exists(mkpath)
+    if not isExists:
+        # 如果不存在则创建目录
+        # 创建目录操作函数
+        os.makedirs(mkpath)
+        print mkpath + ' 创建成功'
+    else:
+        # 如果目录存在则不创建，并提示目录已存在
+        print mkpath + ' 目录已存在'
+
     main()
     tmp_domians = []
     for tmp_domain in final_domains:
         if tmp_domain not in tmp_domians:
             tmp_domians.append(tmp_domain)
     for url in tmp_domians:
-        with open(r'scan_url_port.txt', 'ab+') as ff:
+        with open(mkpath + r'scan_url_port_' + datetime.datetime.now().strftime('%Y%m%d_%H_%M_%S') + r'.csv', 'ab+') as ff:
             ff.write(url+'\n')
     spend_time = (datetime.datetime.now() - start_time).seconds
     print '程序共运行了： ' + str(spend_time) + '秒'
